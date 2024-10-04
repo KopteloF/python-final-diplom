@@ -16,7 +16,6 @@ from .models import *
 from .serializers import *
 from yaml import load as load_yaml, Loader
 from ujson import loads as load_json
-from distutils.util import strtobool
 
 
 # Create your views here.
@@ -191,6 +190,7 @@ class PartnerUpdate(APIView):
             else:
                 stream = get(url).content
                 data = load_yaml(stream, Loader=Loader)
+                return Response({'status': True})
         return Response({'status': False, 'error': 'Не указаны все необходимые поля'},
                         status=status.HTTP_400_BAD_REQUEST)
 
@@ -208,6 +208,12 @@ class PartnerState(APIView):
         if request.user.type != 'shop':
             return Response({'status': False, 'error': 'Только для магазинов'}, status=status.HTTP_403_FORBIDDEN)
         state = request.data.get('state')
+        if state:
+            try:
+                return Response({'status': True})
+            except ValueError as error:
+                return Response({'status': False, 'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': False, 'error': 'Не указано поле Статус'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PartnerOrders(APIView):
@@ -226,21 +232,6 @@ class PartnerOrders(APIView):
                     total_quantity=Sum('ordered_items__quantity'))
         serializer = OrderSerializer(order, many=True)
         return Response(serializer.data)
-
-
-class ProductView(APIView):
-    """ Класс просмотра списка товаров"""
-
-    pagination_class = ApiListPagination
-
-    def get(self, request, *args, **kwargs):
-        query = Q(shop__state=True)
-        shop_id = request.query_params.get('shop_id')
-        category_id = request.query_params.get('category_id')
-        if shop_id:
-            query = query & Q(shop_id=shop_id)
-        if category_id:
-            query = query & Q(category_id=category_id)
 
 
 class CartView(APIView):
@@ -273,6 +264,7 @@ class CartView(APIView):
                 objects_created = 0
                 for order_item in items_dict:
                     order_item.update({'order': cart.id})
+
                     serializer = OrderItemAddSerializer(data=order_item)
                     if serializer.is_valid():
                         try:
