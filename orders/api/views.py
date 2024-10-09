@@ -234,6 +234,12 @@ class PartnerOrders(APIView):
         return Response(serializer.data)
 
 
+class ShopView(generics.ListAPIView):
+    """ Класс просмотра списка магазинов"""
+    queryset = Shop.objects.filter(state=True)
+    serializer_class = ShopSerializer
+    
+
 class CartView(APIView):
     """Класс корзины покупателей"""
     permission_classes = [IsAuthenticated]

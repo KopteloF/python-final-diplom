@@ -20,6 +20,12 @@ class ConfirmEmailTokenAdmin(admin.ModelAdmin):
     list_display = ['user', 'created_at', 'key']
 
 
+@admin.register(Shop)
+class ShopAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'user', 'state']
+    search_fields = ('name',)
+    
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'status', 'contact', 'created', 'updated']

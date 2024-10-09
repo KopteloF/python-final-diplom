@@ -126,6 +126,21 @@ class ConfirmEmailToken(models.Model):
         return f"Токен подтверждения Email для пользователя {self.user}"
 
 
+class Shop(models.Model):
+	name = models.CharField(max_length=50, verbose_name='Название')
+	url = models.URLField(verbose_name='Ссылка на файл прайса', null=True, blank=True)
+	user = models.OneToOneField(User, verbose_name='Пользователь', blank=True, null=True, on_delete=models.CASCADE)
+	state = models.BooleanField(verbose_name='Cтатус получения заказов', default=True)
+
+	class Meta:
+		verbose_name = 'Магазин'
+		verbose_name_plural = "Список магазинов"
+		ordering = ('-name',)
+
+	def __str__(self):
+		return self.name
+     
+
 class Order(models.Model):
 	user = models.ForeignKey(User, verbose_name='Пользователь', related_name='shopAPI', blank=True,
 		on_delete=models.CASCADE)
