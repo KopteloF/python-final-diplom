@@ -240,6 +240,12 @@ class ShopView(generics.ListAPIView):
     serializer_class = ShopSerializer
     
 
+class CategoryView(generics.ListCreateAPIView):
+    """ Класс просмотра списка категорий"""
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+
+
 class CartView(APIView):
     """Класс корзины покупателей"""
     permission_classes = [IsAuthenticated]
@@ -270,7 +276,6 @@ class CartView(APIView):
                 objects_created = 0
                 for order_item in items_dict:
                     order_item.update({'order': cart.id})
-
                     serializer = OrderItemAddSerializer(data=order_item)
                     if serializer.is_valid():
                         try:
@@ -322,6 +327,7 @@ class CartView(APIView):
                 count = OrderItem.objects.filter(query).delete()[0]
                 return Response({'status': True, 'del_objects': count}, status=status.HTTP_204_NO_CONTENT)
         return Response({'status': False, 'error': 'Не указаны все поля'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class OrderView(APIView):

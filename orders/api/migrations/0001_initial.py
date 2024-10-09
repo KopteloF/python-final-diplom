@@ -45,6 +45,20 @@ class Migration(migrations.Migration):
             ],
         ),
 
+
+        migrations.CreateModel(
+            name='Category',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=40, verbose_name='Название')),
+            ],
+            options={
+                'verbose_name': 'Категория',
+                'verbose_name_plural': 'Список категорий',
+                'ordering': ('-name',),
+            },
+        ),
+
         migrations.CreateModel(
             name='Contact',
             fields=[
@@ -80,6 +94,20 @@ class Migration(migrations.Migration):
             },
         ),
 
+
+        migrations.CreateModel(
+            name='Parameter',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=40, verbose_name='Название')),
+            ],
+            options={
+                'verbose_name': 'Имя параметра',
+                'verbose_name_plural': 'Список имен параметров',
+                'ordering': ('-name',),
+            },
+        ),
+        
 
      migrations.CreateModel(
             name='Shop',

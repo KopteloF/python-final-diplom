@@ -140,6 +140,30 @@ class Shop(models.Model):
 	def __str__(self):
 		return self.name
      
+class Category(models.Model):
+	name = models.CharField(max_length=40, verbose_name='Название')
+	shops = models.ManyToManyField(Shop, verbose_name='Магазины', related_name='categories', blank=True)
+
+	class Meta:
+		verbose_name = 'Категория'
+		verbose_name_plural = "Список категорий"
+		ordering = ('-name',)
+
+	def __str__(self):
+		return self.name
+      
+
+class Parameter(models.Model):
+	name = models.CharField(max_length=40, verbose_name='Название')
+
+	class Meta:
+		verbose_name = 'Имя параметра'
+		verbose_name_plural = "Список имен параметров"
+		ordering = ('-name',)
+
+	def __str__(self):
+		return self.name
+      
 
 class Order(models.Model):
 	user = models.ForeignKey(User, verbose_name='Пользователь', related_name='shopAPI', blank=True,
