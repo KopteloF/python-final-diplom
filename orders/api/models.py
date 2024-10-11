@@ -153,6 +153,28 @@ class Category(models.Model):
 		return self.name
       
 
+class Product(models.Model):
+	name = models.CharField(max_length=80, verbose_name='Название')
+	category = models.ForeignKey(Category, verbose_name='Категория', related_name='products', blank=True,
+		on_delete=models.CASCADE)
+	model = models.CharField(max_length=80, verbose_name='Модель', blank=True)
+	external_id = models.PositiveIntegerField(verbose_name='Внешний ИД')
+	shop = models.ForeignKey(Shop, verbose_name='Магазин', related_name='products_info', blank=True,
+		on_delete=models.CASCADE)
+	quantity = models.PositiveIntegerField(verbose_name='Количество')
+	price = models.PositiveIntegerField(verbose_name='Цена')
+	price_rrc = models.PositiveIntegerField(verbose_name='Рекомендуемая розничная цена')
+
+	class Meta:
+		verbose_name = 'Продукт'
+		verbose_name_plural = "Список продуктов"
+		ordering = ('category', '-name')
+		constraints = [models.UniqueConstraint(fields=['shop', 'category', 'external_id'], name='unique_product_info'), ]
+
+	def __str__(self):
+		return self.name
+	
+
 class Parameter(models.Model):
 	name = models.CharField(max_length=40, verbose_name='Название')
 

@@ -108,8 +108,27 @@ class Migration(migrations.Migration):
             },
         ),
         
+        migrations.CreateModel(
+            name='Product',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=80, verbose_name='Название')),
+                ('model', models.CharField(blank=True, max_length=80, verbose_name='Модель')),
+                ('external_id', models.PositiveIntegerField(verbose_name='Внешний ИД')),
+                ('quantity', models.PositiveIntegerField(verbose_name='Количество')),
+                ('price', models.PositiveIntegerField(verbose_name='Цена')),
+                ('price_rrc', models.PositiveIntegerField(verbose_name='Рекомендуемая розничная цена')),
+                ('category', models.ForeignKey(blank=True, on_delete=django.db.models.deletion.CASCADE, related_name='products', to='api.category', verbose_name='Категория')),
+            ],
+            options={
+                'verbose_name': 'Продукт',
+                'verbose_name_plural': 'Список продуктов',
+                'ordering': ('category', '-name'),
+            },
+        ),
 
-     migrations.CreateModel(
+        
+        migrations.CreateModel(
             name='Shop',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),

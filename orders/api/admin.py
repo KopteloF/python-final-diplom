@@ -26,6 +26,12 @@ class ShopAdmin(admin.ModelAdmin):
     search_fields = ('name',)
     
 
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'category', 'model', 'external_id', 'shop', 'quantity', 'price', 'price_rrc']
+    search_fields = ('name', 'model',)
+
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['id', 'name']

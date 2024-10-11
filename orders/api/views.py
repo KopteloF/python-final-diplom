@@ -246,6 +246,28 @@ class CategoryView(generics.ListCreateAPIView):
     serializer_class = CategorySerializer
 
 
+class ProductView(APIView):
+    """ Класс просмотра списка товаров"""
+
+    pagination_class = ApiListPagination
+
+    def get(self, request, *args, **kwargs):
+        query = Q(shop__state=True)
+        shop_id = request.query_params.get('shop_id')
+        category_id = request.query_params.get('category_id')
+        if shop_id:
+            query = query & Q(shop_id=shop_id)
+        if category_id:
+            query = query & Q(category_id=category_id)
+        queryset = Product.objects.filter(query).select_related('shop', 'category')
+        serializer = ProductSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+class ProductViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+
+
 class CartView(APIView):
     """Класс корзины покупателей"""
     permission_classes = [IsAuthenticated]
