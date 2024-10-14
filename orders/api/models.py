@@ -187,6 +187,22 @@ class Parameter(models.Model):
 		return self.name
       
 
+class ProductParameter(models.Model):
+	product = models.ForeignKey(Product, verbose_name='Информация о продукте',
+		related_name='product_parameters', blank=True, on_delete=models.CASCADE)
+	parameter = models.ForeignKey(Parameter, verbose_name='Параметр',
+	 	related_name='parameter', blank=True, on_delete=models.CASCADE)
+	value = models.CharField(verbose_name='Значение', max_length=100)
+
+	class Meta:
+		verbose_name = 'Параметр'
+		verbose_name_plural = "Список параметров"
+		constraints = [models.UniqueConstraint(fields=['product', 'parameter'], name='unique_product_parameter'), ]
+
+	def __str__(self):
+		return f'{self.product} - {self.parameter} {self.value}'
+	
+
 class Order(models.Model):
 	user = models.ForeignKey(User, verbose_name='Пользователь', related_name='shopAPI', blank=True,
 		on_delete=models.CASCADE)
@@ -209,6 +225,10 @@ class Order(models.Model):
 class OrderItem(models.Model):
 	order = models.ForeignKey(Order, verbose_name='Заказ', related_name='ordered_items', blank=True,
 		on_delete=models.CASCADE)
+	category = models.ForeignKey(Category, verbose_name='Категория товара', blank=True, null=True,
+		on_delete=models.SET_NULL)
+	shop = models.ForeignKey(Shop, verbose_name='магазин', blank=True, null=True, on_delete=models.SET_NULL)
+	product_name = models.CharField(max_length=80, verbose_name='Название товара')
 	external_id = models.PositiveIntegerField(verbose_name='Внешний ИД')
 	quantity = models.PositiveIntegerField(default=1, verbose_name='Количество')
 	price = models.PositiveIntegerField(default=0, verbose_name='Цена')
@@ -219,7 +239,7 @@ class OrderItem(models.Model):
 		verbose_name_plural = "Список заказанных позиций"
 		constraints = [
 			models.UniqueConstraint(fields=['order_id', 'product_name'], name='unique_order_item'), ]
-
+		
 	def __str__(self):
 		return self.product_name
 

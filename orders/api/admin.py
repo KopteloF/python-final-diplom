@@ -32,6 +32,12 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ('name', 'model',)
 
 
+@admin.register(ProductParameter)
+class ProductParameterAdmin(admin.ModelAdmin):
+    list_display = ['id', 'product', 'parameter', 'value']
+    search_fields = ('product',)
+
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['id', 'name']

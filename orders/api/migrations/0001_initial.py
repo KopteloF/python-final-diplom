@@ -44,8 +44,6 @@ class Migration(migrations.Migration):
                 ('objects', api.models.UserManager()),
             ],
         ),
-
-
         migrations.CreateModel(
             name='Category',
             fields=[
@@ -58,7 +56,6 @@ class Migration(migrations.Migration):
                 'ordering': ('-name',),
             },
         ),
-
         migrations.CreateModel(
             name='Contact',
             fields=[
@@ -93,8 +90,6 @@ class Migration(migrations.Migration):
                 'ordering': ('-created',),
             },
         ),
-
-
         migrations.CreateModel(
             name='Parameter',
             fields=[
@@ -107,7 +102,6 @@ class Migration(migrations.Migration):
                 'ordering': ('-name',),
             },
         ),
-        
         migrations.CreateModel(
             name='Product',
             fields=[
@@ -126,8 +120,6 @@ class Migration(migrations.Migration):
                 'ordering': ('category', '-name'),
             },
         ),
-
-        
         migrations.CreateModel(
             name='Shop',
             fields=[
@@ -142,6 +134,24 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Список магазинов',
                 'ordering': ('-name',),
             },
+        ),
+        migrations.CreateModel(
+            name='ProductParameter',
+            fields=[
+                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('value', models.CharField(max_length=100, verbose_name='Значение')),
+                ('parameter', models.ForeignKey(blank=True, on_delete=django.db.models.deletion.CASCADE, related_name='parameter', to='api.parameter', verbose_name='Параметр')),
+                ('product', models.ForeignKey(blank=True, on_delete=django.db.models.deletion.CASCADE, related_name='product_parameters', to='api.product', verbose_name='Информация о продукте')),
+            ],
+            options={
+                'verbose_name': 'Параметр',
+                'verbose_name_plural': 'Список параметров',
+            },
+        ),
+        migrations.AddField(
+            model_name='product',
+            name='shop',
+            field=models.ForeignKey(blank=True, on_delete=django.db.models.deletion.CASCADE, related_name='products_info', to='api.shop', verbose_name='Магазин'),
         ),
         migrations.CreateModel(
             name='OrderItem',
@@ -174,7 +184,19 @@ class Migration(migrations.Migration):
                 'verbose_name_plural': 'Токены подтверждения Email',
             },
         ),
-
+        migrations.AddField(
+            model_name='category',
+            name='shops',
+            field=models.ManyToManyField(blank=True, related_name='categories', to='api.shop', verbose_name='Магазины'),
+        ),
+        migrations.AddConstraint(
+            model_name='productparameter',
+            constraint=models.UniqueConstraint(fields=('product', 'parameter'), name='unique_product_parameter'),
+        ),
+        migrations.AddConstraint(
+            model_name='product',
+            constraint=models.UniqueConstraint(fields=('shop', 'category', 'external_id'), name='unique_product_info'),
+        ),
         migrations.AddConstraint(
             model_name='orderitem',
             constraint=models.UniqueConstraint(fields=('order_id', 'product_name'), name='unique_order_item'),

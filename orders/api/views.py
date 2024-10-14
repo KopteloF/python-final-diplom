@@ -190,6 +190,11 @@ class PartnerUpdate(APIView):
             else:
                 stream = get(url).content
                 data = load_yaml(stream, Loader=Loader)
+                shop, _ = Shop.objects.get_or_create(user_id=request.user.id, defaults={
+                    'name': data['shop'], 'url': url})
+                if shop.name != data['shop']:
+                    return Response({'status': False, 'error': 'В файле некоректное навание магазина'},
+                                    status=status.HTTP_400_BAD_REQUEST)
                 return Response({'status': True})
         return Response({'status': False, 'error': 'Не указаны все необходимые поля'},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -202,6 +207,9 @@ class PartnerState(APIView):
         """Функция для получения статуса магазина"""
         if request.user.type != 'shop':
             return Response({'status': False, 'error': 'Только для магазинов'}, status=status.HTTP_403_FORBIDDEN)
+        shop = request.user.shop
+        serializer = ShopSerializer(shop)
+        return Response(serializer.data)
 
     def post(self, request, *args, **kwargs):
         """Функция изменения статуса магазина"""
@@ -210,6 +218,7 @@ class PartnerState(APIView):
         state = request.data.get('state')
         if state:
             try:
+                Shop.objects.filter(user_id=request.user.id)
                 return Response({'status': True})
             except ValueError as error:
                 return Response({'status': False, 'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
@@ -238,7 +247,7 @@ class ShopView(generics.ListAPIView):
     """ Класс просмотра списка магазинов"""
     queryset = Shop.objects.filter(state=True)
     serializer_class = ShopSerializer
-    
+
 
 class CategoryView(generics.ListCreateAPIView):
     """ Класс просмотра списка категорий"""
@@ -259,7 +268,8 @@ class ProductView(APIView):
             query = query & Q(shop_id=shop_id)
         if category_id:
             query = query & Q(category_id=category_id)
-        queryset = Product.objects.filter(query).select_related('shop', 'category')
+        queryset = Product.objects.filter(query).select_related('shop', 'category').\
+            prefetch_related('product_parameters').distinct()
         serializer = ProductSerializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -298,6 +308,10 @@ class CartView(APIView):
                 objects_created = 0
                 for order_item in items_dict:
                     order_item.update({'order': cart.id})
+                    product = Product.objects.filter(external_id=order_item['external_id']).values('category', 'shop',
+                                                                                                   'name', 'price')
+                    order_item.update({'category': product[0]['category'], 'shop': product[0]['shop'],
+                                       'product_name': product[0]['name'], 'price': product[0]['price']})
                     serializer = OrderItemAddSerializer(data=order_item)
                     if serializer.is_valid():
                         try:
@@ -349,7 +363,6 @@ class CartView(APIView):
                 count = OrderItem.objects.filter(query).delete()[0]
                 return Response({'status': True, 'del_objects': count}, status=status.HTTP_204_NO_CONTENT)
         return Response({'status': False, 'error': 'Не указаны все поля'}, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 class OrderView(APIView):

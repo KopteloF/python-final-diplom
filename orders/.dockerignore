@@ -1,4 +1,0 @@
-# игнорировать каталоги .git и .cache 
-.git
-.cache
-.venv

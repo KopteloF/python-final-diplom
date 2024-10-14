@@ -25,7 +25,7 @@ class ShopSerializer(serializers.ModelSerializer):
         model = Shop
         fields = "__all__"
         read_only_fields = ('id',)
-        
+
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,9 +34,18 @@ class CategorySerializer(serializers.ModelSerializer):
         read_only_fields = ('id',)
 
 
+class ProductParameterSerializer(serializers.ModelSerializer):
+    parameter = serializers.StringRelatedField()
+
+    class Meta:
+        model = ProductParameter
+        fields = "__all__"
+
+
 class ProductSerializer(serializers.ModelSerializer):
     shop = serializers.StringRelatedField()
     category = serializers.StringRelatedField()
+    product_parameters = ProductParameterSerializer(read_only=True, many=True)
 
     class Meta:
         model = Product
