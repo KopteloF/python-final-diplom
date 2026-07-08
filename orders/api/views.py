@@ -195,10 +195,37 @@ class PartnerUpdate(APIView):
                 if shop.name != data['shop']:
                     return Response({'status': False, 'error': 'В файле некоректное навание магазина'},
                                     status=status.HTTP_400_BAD_REQUEST)
+
+                for category in data['categories']:
+                    category_object, _ = Category.objects.get_or_create(
+                        id=category['id'], defaults={'name': category['name']})
+                    category_object.shops.add(shop.id)
+                    category_object.save()
+
+                Product.objects.filter(shop_id=shop.id).delete()
+
+                for item in data['goods']:
+                    product = Product.objects.create(
+                        name=item['name'],
+                        category_id=item['category'],
+                        model=item.get('model', ''),
+                        external_id=item['id'],
+                        shop_id=shop.id,
+                        quantity=item['quantity'],
+                        price=item['price'],
+                        price_rrc=item['price_rrc'],
+                    )
+                    for param_name, param_value in item['parameters'].items():
+                        parameter_object, _ = Parameter.objects.get_or_create(name=param_name)
+                        ProductParameter.objects.create(
+                            product_id=product.id,
+                            parameter_id=parameter_object.id,
+                            value=str(param_value),
+                        )
+
                 return Response({'status': True})
         return Response({'status': False, 'error': 'Не указаны все необходимые поля'},
                         status=status.HTTP_400_BAD_REQUEST)
-
 
 class PartnerState(APIView):
     permission_classes = [IsAuthenticated]
