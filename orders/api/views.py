@@ -22,7 +22,7 @@ from ujson import loads as load_json
 
 def on_change_order_status(user_id, order_id):
     """Функция отправит пользователю письмо об изменении статуса заказа"""
-    
+
     user = User.objects.get(id=user_id)
     order = Order.objects.get(id=order_id)
     message = 'Твой заказ номер {} имеет статус "{}"'.format(
@@ -66,7 +66,8 @@ class RegisterUser(APIView):
 
 
 class Сonfirmation(APIView):
-    """Класс для подтверждения регистрации""" 
+    """Класс для подтверждения регистрации"""
+
     def post(self, request, *args, **kwargs):
         if {'email', 'token'}.issubset(request.data):
             token = ConfirmEmailToken.objects.filter(user__email=request.data['email'],
@@ -80,11 +81,12 @@ class Сonfirmation(APIView):
                 })
             else:
                 return Response({'Status': False, 'Errors': 'Неправильно указан token или email'})
-        return Response({'Status': False, 'Errors': 'Не указыны все аргументы'}) 
+        return Response({'Status': False, 'Errors': 'Не указыны все аргументы'})
 
 
 class LoginUser(APIView):
     """Класс для входа(авторизации)"""
+
     def post(self, request, *args, **kwargs):
         if {'email', 'password'}.issubset(request.data):
             user = authenticate(request, username=request.data['email'], password=request.data['password'])
@@ -227,6 +229,7 @@ class PartnerUpdate(APIView):
         return Response({'status': False, 'error': 'Не указаны все необходимые поля'},
                         status=status.HTTP_400_BAD_REQUEST)
 
+
 class PartnerState(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -264,8 +267,8 @@ class PartnerOrders(APIView):
         order = Order.objects.filter(
             ordered_items__shop__user_id=request.user.id).exclude(status='cart')\
             .prefetch_related(prefetch).select_related('contact').annotate(
-                    total_sum=Sum('ordered_items__total_amount'),
-                    total_quantity=Sum('ordered_items__quantity'))
+            total_sum=Sum('ordered_items__total_amount'),
+            total_quantity=Sum('ordered_items__quantity'))
         serializer = OrderSerializer(order, many=True)
         return Response(serializer.data)
 
@@ -299,6 +302,7 @@ class ProductView(APIView):
             prefetch_related('product_parameters').distinct()
         serializer = ProductSerializer(queryset, many=True)
         return Response(serializer.data)
+
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Product.objects.all()
@@ -419,8 +423,6 @@ class OrderView(APIView):
                     return Response({'Status': False, 'Errors': 'Неправильно указаны аргументы'})
                 else:
                     if is_updated:
-                        #on_change_order_status(request.user.id, request.data['id'])
+                        # on_change_order_status(request.user.id, request.data['id'])
                         return Response({'Status': True})
-                    else:
-                        error_message = 'Сбой'         
         return Response({'Status': False, 'Error': 'Не указаны все необходимые аргументы'})

@@ -24,7 +24,7 @@ class ConfirmEmailTokenAdmin(admin.ModelAdmin):
 class ShopAdmin(admin.ModelAdmin):
     list_display = ['id', 'name', 'user', 'state']
     search_fields = ('name',)
-    
+
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):

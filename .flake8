@@ -1,0 +1,4 @@
+[flake8]
+max-line-length = 120
+exclude = .git,__pycache__,*/migrations/*,venv,orders/orders/settings.py
+extend-ignore = F403,F405,W503,E203
