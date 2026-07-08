@@ -26,3 +26,4 @@ urllib3==2.2.3
 
 psycopg2-binary
 python-dotenv
+gunicorn
