@@ -1,0 +1,47 @@
+---
+- name: Deploy orders app (Docker Compose)
+  hosts: web
+  become: true
+  vars:
+    project_dir: /opt/orders
+    repo_url: https://github.com/KopteloF/python-final-diplom.git
+  tasks:
+    - name: Install base packages
+      apt:
+        name: [ca-certificates, curl, git]
+        state: present
+        update_cache: true
+
+    - name: Install Docker (official script)
+      shell: curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: Ensure Docker is running
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Clone/update project
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ project_dir }}"
+        version: master
+        force: true
+
+    - name: Render .env from template
+      template:
+        src: templates/env.j2
+        dest: "{{ project_dir }}/.env"
+        mode: "0600"
+
+    - name: Build and start containers
+      command: docker compose up -d --build
+      args:
+        chdir: "{{ project_dir }}"
+
+    - name: Run database migrations
+      command: docker compose run --rm app python manage.py migrate
+      args:
+        chdir: "{{ project_dir }}"
