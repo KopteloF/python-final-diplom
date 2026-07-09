@@ -12,6 +12,13 @@ spec:
       labels:
         app: app
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: app
       initContainers:
         - name: migrate
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
