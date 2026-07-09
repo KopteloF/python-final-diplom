@@ -1,0 +1,31 @@
+app:
+  image:
+    repository: orders-app
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+config:
+  DEBUG: "True"
+  ALLOWED_HOSTS: "*"
+  DB_HOST: "db"
+  DB_PORT: "5432"
+  DB_NAME: "orders_db"
+  DB_USER: "orders_user"
+postgres:
+  image: postgres:16
+  storage: 2Gi
+redis:
+  image: redis:7-alpine
+ingress:
+  enabled: true
+# имена секретов, созданных ВНЕ чарта (kubectl create secret ...)
+existingSecrets:
+  db: db-credentials
+  app: app-secrets
