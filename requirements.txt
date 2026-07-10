@@ -28,3 +28,4 @@ psycopg2-binary
 python-dotenv
 gunicorn
 pytest-cov
+django-prometheus==2.3.1

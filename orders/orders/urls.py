@@ -41,4 +41,5 @@ urlpatterns = [
     path('partner/orders', PartnerOrders.as_view()),
     path('cart', CartView.as_view()),
     path('order', OrderView.as_view()),
+    path('', include('django_prometheus.urls')),
 ]
