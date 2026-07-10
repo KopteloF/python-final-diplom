@@ -1,8 +1,9 @@
 app:
   image:
-    repository: orders-app
-    tag: latest
+    repository: ghcr.io/koptelof/orders-app
+    tag: f25eb2b
     pullPolicy: IfNotPresent
+    pullSecret: ghcr-cred
   replicas: 2
   resources:
     requests:

@@ -16,6 +16,8 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      imagePullSecrets:
+        - name: {{ .Values.app.image.pullSecret }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
