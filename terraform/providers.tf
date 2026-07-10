@@ -6,8 +6,19 @@ terraform {
       version = ">= 0.100"
     }
   }
+  backend "s3" {
+    endpoints = {
+      s3 = "https://storage.yandexcloud.net"
+    }
+    bucket = "tf-state-kopteloff-orders"
+    region = "ru-central1"
+    key    = "orders/terraform.tfstate"
+    skip_region_validation      = true
+    skip_credentials_validation = true
+    skip_requesting_account_id  = true
+    skip_s3_checksum            = true
+  }
 }
-
 provider "yandex" {
   service_account_key_file = var.sa_key_file
   cloud_id                 = var.cloud_id
