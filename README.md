@@ -2,7 +2,7 @@
 
 REST API сервиса заказов для розничной сети, обёрнутый в полный production-подобный **DevOps-цикл**. Приложение здесь — реалистичная рабочая нагрузка; **фокус проекта — инфраструктура и практики вокруг него**: контейнеризация, CI/CD, Kubernetes, мониторинг, управление секретами и Infrastructure as Code.
 
-![CI](https://github.com/KopteloF/python-final-diplom/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/KopteloF/orders-devops/actions/workflows/ci.yml/badge.svg)
 
 ## О приложении (кратко)
 
