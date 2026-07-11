@@ -59,6 +59,10 @@ resource "yandex_compute_instance" "vm" {
   platform_id = "standard-v3"
   zone        = var.zone
 
+  # Привязываем SA к VM: поды на ноде смогут получить IAM-токен из metadata
+  # (169.254.169.254) и дёргать YC KMS без статичного ключа в кластере.
+  service_account_id = yandex_iam_service_account.vault_kms.id
+
   scheduling_policy {
     preemptible = true
   }

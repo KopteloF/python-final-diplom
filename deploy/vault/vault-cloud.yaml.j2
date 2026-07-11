@@ -1,0 +1,182 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: vault
+---
+# Нужен для Kubernetes auth method (Фаза 4). Сейчас безвреден.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-tokenreview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: vault
+data:
+  vault.hcl: |
+    ui = true
+    disable_mlock = true
+    storage "raft" {
+      path    = "/vault/data"
+      node_id = "vault-0"
+    }
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = 1
+    }
+    api_addr     = "http://vault.vault.svc:8200"
+    cluster_addr = "http://vault-0.vault-internal:8201"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-internal
+  namespace: vault
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: vault
+  ports:
+    - name: http
+      port: 8200
+    - name: cluster
+      port: 8201
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  selector:
+    app: vault
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  serviceName: vault-internal
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      serviceAccountName: vault
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.17
+          command: ["vault", "server", "-config=/vault/config/vault.hcl"]
+          ports:
+            - containerPort: 8200
+              name: http
+            - containerPort: 8201
+              name: cluster
+          env:
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+          volumeMounts:
+            - name: config
+              mountPath: /vault/config
+            - name: data
+              mountPath: /vault/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              # sealedcode/uninitcode=200: под становится Ready даже запечатанным,
+              # чтобы можно было сходить в API для init и увидеть статус.
+              path: /v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200
+              port: 8200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        # --- Sidecar auto-unseal: сам распечатывает Vault, забирая ключи из YC KMS ---
+        - name: unseal-agent
+          image: alpine:3.20
+          env:
+            - name: KMS_KEY_ID
+              value: "{{ kms_key_id }}"
+          volumeMounts:
+            - name: unseal-keys
+              mountPath: /unseal
+              readOnly: true
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              apk add --no-cache curl jq >/dev/null 2>&1
+              META="http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+              VAULT="http://127.0.0.1:8200"
+              KEYDIR="/unseal"
+              echo "[unseal-agent] старт, KMS key: $KMS_KEY_ID"
+              while true; do
+                STATUS="$(curl -s $VAULT/v1/sys/seal-status 2>/dev/null)"
+                INIT="$(echo "$STATUS" | jq -r '.initialized // false')"
+                SEALED="$(echo "$STATUS" | jq -r '.sealed // true')"
+                if [ "$INIT" = "true" ] && [ "$SEALED" = "true" ] && [ -f "$KEYDIR/key1" ]; then
+                  echo "[unseal-agent] Vault запечатан -> расшифровываю unseal-ключи через YC KMS"
+                  TOKEN="$(curl -s -H 'Metadata-Flavor: Google' $META | jq -r '.access_token // empty')"
+                  if [ -z "$TOKEN" ]; then
+                    echo "[unseal-agent] НЕ получил IAM-токен из metadata — проверь привязку SA к VM"
+                    sleep 10; continue
+                  fi
+                  for f in "$KEYDIR"/key1 "$KEYDIR"/key2 "$KEYDIR"/key3; do
+                    [ -f "$f" ] || continue
+                    CT="$(cat "$f")"
+                    PT="$(curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+                          -d "{\"ciphertext\":\"$CT\"}" \
+                          "https://kms.yandex/kms/v1/keys/$KMS_KEY_ID:decrypt" | jq -r '.plaintext // empty' | base64 -d)"
+                    [ -n "$PT" ] && curl -s -X PUT -d "{\"key\":\"$PT\"}" $VAULT/v1/sys/unseal >/dev/null
+                  done
+                  NOW="$(curl -s $VAULT/v1/sys/seal-status | jq -r .sealed)"
+                  echo "[unseal-agent] после попытки распечатки: sealed=$NOW"
+                fi
+                sleep 10
+              done
+      volumes:
+        - name: config
+          configMap:
+            name: vault-config
+        - name: unseal-keys
+          secret:
+            secretName: vault-unseal-keys
+            optional: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

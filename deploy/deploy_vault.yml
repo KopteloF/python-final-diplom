@@ -1,0 +1,137 @@
+---
+# Фаза 3: Vault prod (Raft/PVC) в облачном k3s + auto-unseal через YC KMS.
+# Unseal-ключи НИКОГДА не лежат в кластере в открытом виде: их шифрует YC KMS,
+# а sidecar в поде расшифровывает их (IAM-токен из metadata VM) и распечатывает Vault.
+# kms_key_id приходит из wrapper через --extra-vars (terraform output).
+- name: Deploy Vault with KMS auto-unseal (cloud)
+  hosts: web
+  become: true
+  vars:
+    k3s_mirror: cn          # GitHub-releases режется из ru-облака → зеркало Rancher
+    kms_key_id: ""          # ОБЯЗАТЕЛЬНО из wrapper (terraform output kms_key_id)
+    meta_token_url: "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+    kms_crypto: "https://kms.yandex/kms/v1/keys"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Проверка — задан kms_key_id
+      fail:
+        msg: "kms_key_id пуст. Запускай через wrapper deploy_cloud_vault.sh (он берёт terraform output)."
+      when: kms_key_id | length == 0
+
+    - name: Install base packages
+      apt:
+        name: [curl, jq, git]
+        state: present
+        update_cache: true
+
+    - name: Install k3s (single node, через зеркало)
+      shell: curl -sfL https://get.k3s.io | INSTALL_K3S_MIRROR={{ k3s_mirror }} sh -
+      args:
+        creates: /usr/local/bin/k3s
+      register: k3s_install
+      retries: 3
+      delay: 10
+      until: k3s_install.rc == 0
+
+    - name: Wait for k3s node Ready
+      command: k3s kubectl wait --for=condition=Ready node --all --timeout=180s
+      changed_when: false
+
+    - name: Render Vault-манифеста (KMS key внутри sidecar)
+      template:
+        src: vault/vault-cloud.yaml.j2
+        dest: /tmp/vault-cloud.yaml
+        mode: "0644"
+
+    - name: Apply Vault
+      command: k3s kubectl apply -f /tmp/vault-cloud.yaml
+      register: vault_apply
+      changed_when: "'created' in vault_apply.stdout or 'configured' in vault_apply.stdout"
+
+    - name: Wait StatefulSet vault Ready (под поднялся; распечатка ещё нет)
+      command: k3s kubectl -n vault rollout status statefulset/vault --timeout=240s
+      changed_when: false
+
+    - name: Vault initialized?
+      shell: >
+        k3s kubectl -n vault exec vault-0 -c vault --
+        vault status -format=json 2>/dev/null | jq -r '.initialized' || echo notready
+      register: v_init
+      retries: 20
+      delay: 6
+      until: v_init.stdout in ["true", "false"]
+      changed_when: false
+
+    - name: Init Vault (5 ключей, порог 3) — один раз
+      command: >
+        k3s kubectl -n vault exec vault-0 -c vault --
+        vault operator init -key-shares=5 -key-threshold=3 -format=json
+      register: vault_init_raw
+      when: v_init.stdout == "false"
+      no_log: true
+
+    - name: Разобрать ключи и root-token
+      set_fact:
+        _uk: "{{ (vault_init_raw.stdout | from_json).unseal_keys_b64 }}"
+        _root: "{{ (vault_init_raw.stdout | from_json).root_token }}"
+      when: v_init.stdout == "false"
+      no_log: true
+
+    - name: Зашифровать 3 unseal-ключа через YC KMS и создать Secret vault-unseal-keys
+      shell: |
+        set -eo pipefail
+        TOKEN="$(curl -s --fail -H 'Metadata-Flavor: Google' "{{ meta_token_url }}" | jq -r .access_token)"
+        enc() { pt="$(printf '%s' "$1" | base64 -w0)"; \
+          curl -s --fail -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"plaintext\":\"$pt\"}" "{{ kms_crypto }}/{{ kms_key_id }}:encrypt" | jq -r .ciphertext; }
+        C1="$(enc "$K1")"; C2="$(enc "$K2")"; C3="$(enc "$K3")"
+        k3s kubectl -n vault create secret generic vault-unseal-keys \
+          --from-literal=key1="$C1" --from-literal=key2="$C2" --from-literal=key3="$C3" \
+          --dry-run=client -o yaml | k3s kubectl apply -f -
+      args:
+        executable: /bin/bash
+      environment:
+        K1: "{{ _uk[0] }}"
+        K2: "{{ _uk[1] }}"
+        K3: "{{ _uk[2] }}"
+      when: v_init.stdout == "false"
+      no_log: true
+
+    - name: Сохранить root-token в Secret vault-root (для след. фаз)
+      shell: |
+        k3s kubectl -n vault create secret generic vault-root \
+          --from-literal=token="$ROOT" --dry-run=client -o yaml | k3s kubectl apply -f -
+      environment:
+        ROOT: "{{ _root }}"
+      when: v_init.stdout == "false"
+      no_log: true
+
+    - name: Пересоздать под Vault (чтобы примонтировался Secret с ключами)
+      command: k3s kubectl -n vault delete pod vault-0
+      when: v_init.stdout == "false"
+      changed_when: true
+
+    - name: Дождаться, пока под снова Ready
+      command: k3s kubectl -n vault rollout status statefulset/vault --timeout=240s
+      changed_when: false
+
+    - name: Ждём AUTO-UNSEAL (sidecar сам распечатывает через KMS)
+      shell: >
+        k3s kubectl -n vault exec vault-0 -c vault --
+        vault status -format=json 2>/dev/null | jq -r '.sealed' 2>/dev/null || echo pending
+      register: sealed_now
+      retries: 30
+      delay: 10
+      until: sealed_now.stdout == "false"
+      changed_when: false
+
+    - name: Финальный статус Vault
+      command: k3s kubectl -n vault exec vault-0 -c vault -- vault status
+      register: vault_final
+      changed_when: false
+      failed_when: false
+
+    - name: Итог
+      debug:
+        msg: "{{ vault_final.stdout_lines }}"
