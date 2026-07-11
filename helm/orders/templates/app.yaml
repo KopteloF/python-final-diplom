@@ -1,3 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orders-app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,7 +20,14 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "orders-app"
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/orders/app"
+        vault.hashicorp.com/agent-inject-template-config: |
+{{ .Files.Get "files/vault-config.tpl" | indent 10 }}
     spec:
+      serviceAccountName: orders-app
       imagePullSecrets:
         - name: {{ .Values.app.image.pullSecret }}
       topologySpreadConstraints:
@@ -29,23 +41,32 @@ spec:
         - name: migrate
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
-          command: ["python", "manage.py", "migrate", "--noinput"]
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -a
+              . /vault/secrets/config
+              set +a
+              exec python manage.py migrate --noinput
           envFrom:
             - configMapRef:
                 name: app-config
-            - secretRef:
-                name: {{ .Values.existingSecrets.app }}
       containers:
         - name: app
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -a
+              . /vault/secrets/config
+              set +a
+              exec gunicorn orders.wsgi:application --bind 0.0.0.0:8000 --workers 3
           ports:
             - containerPort: 8000
           envFrom:
             - configMapRef:
                 name: app-config
-            - secretRef:
-                name: {{ .Values.existingSecrets.app }}
           readinessProbe:
             httpGet:
               path: /shops
