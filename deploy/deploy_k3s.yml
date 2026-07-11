@@ -9,6 +9,7 @@
     project_dir: /opt/orders
     namespace: orders
     image_tag: ""          # если задан — переопределяет тег из values.yaml
+    k3s_mirror: cn         # GitHub-releases режется из ru-облака → тянем k3s с зеркала Rancher
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   tasks:
@@ -18,10 +19,14 @@
         state: present
         update_cache: true
 
-    - name: Install k3s (single node)
-      shell: curl -sfL https://get.k3s.io | sh -
+    - name: Install k3s (single node, через зеркало)
+      shell: curl -sfL https://get.k3s.io | INSTALL_K3S_MIRROR={{ k3s_mirror }} sh -
       args:
         creates: /usr/local/bin/k3s
+      register: k3s_install
+      retries: 3
+      delay: 10
+      until: k3s_install.rc == 0
 
     - name: Wait for k3s node Ready
       command: k3s kubectl wait --for=condition=Ready node --all --timeout=180s
