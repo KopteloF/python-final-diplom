@@ -1,15 +1,16 @@
 ---
-# Фаза 1 облачной доводки: разворачиваем приложение в k3s из готового Helm-чарта.
-# Секреты (db_password, secret_key) приходят через --extra-vars из wrapper-скрипта.
+# Облачная доводка: приложение в k3s из Helm-чарта + TLS (cert-manager, Let's Encrypt).
+# Секреты (db_password, secret_key) и le_host приходят из wrapper через --extra-vars.
 - name: Deploy orders on k3s (cloud)
   hosts: web
   become: true
   vars:
     repo_url: https://github.com/KopteloF/orders-devops.git
     project_dir: /opt/orders
-    namespace: orders
+    k8s_ns: orders
     image_tag: ""          # если задан — переопределяет тег из values.yaml
     k3s_mirror: cn         # GitHub-releases режется из ru-облака → тянем k3s с зеркала Rancher
+    le_host: ""            # хост для Ingress/TLS, напр. <ip>.sslip.io
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   tasks:
@@ -18,6 +19,16 @@
         name: [curl, git, openssl]
         state: present
         update_cache: true
+
+    - name: Precheck — quay.io доступен (нужен для образов cert-manager)
+      shell: curl -m 15 -sS -o /dev/null -w "%{http_code}" https://quay.io/v2/ || echo TIMEOUT
+      register: quay_check
+      changed_when: false
+
+    - name: Fail fast если quay.io недоступен
+      fail:
+        msg: "quay.io недоступен (код '{{ quay_check.stdout }}') — образы cert-manager не скачаются. Нужен зеркальный реестр."
+      when: not (quay_check.stdout is search('^(200|401)$'))
 
     - name: Install k3s (single node, через зеркало)
       shell: curl -sfL https://get.k3s.io | INSTALL_K3S_MIRROR={{ k3s_mirror }} sh -
@@ -44,14 +55,35 @@
         version: master
         force: true
 
+    - name: Install cert-manager (из локального манифеста — обход GitHub-CDN)
+      command: k3s kubectl apply -f {{ project_dir }}/deploy/cert-manager/cert-manager.yaml
+      register: cm_apply
+      changed_when: "'created' in cm_apply.stdout or 'configured' in cm_apply.stdout"
+
+    - name: Wait cert-manager Ready
+      command: k3s kubectl -n cert-manager rollout status deploy/{{ item }} --timeout=240s
+      loop:
+        - cert-manager
+        - cert-manager-webhook
+        - cert-manager-cainjector
+      changed_when: false
+
+    - name: Apply ClusterIssuers (retry — webhook admission поднимается не мгновенно)
+      command: k3s kubectl apply -f {{ project_dir }}/deploy/cert-manager/cluster-issuers.yaml
+      register: issuer_apply
+      retries: 6
+      delay: 10
+      until: issuer_apply.rc == 0
+      changed_when: "'created' in issuer_apply.stdout or 'configured' in issuer_apply.stdout"
+
     - name: Ensure namespace
       shell: |
-        k3s kubectl create namespace {{ namespace }} --dry-run=client -o yaml | k3s kubectl apply -f -
+        k3s kubectl create namespace {{ k8s_ns }} --dry-run=client -o yaml | k3s kubectl apply -f -
       changed_when: false
 
     - name: Create/update db-credentials secret
       shell: |
-        k3s kubectl -n {{ namespace }} create secret generic db-credentials \
+        k3s kubectl -n {{ k8s_ns }} create secret generic db-credentials \
           --from-literal=POSTGRES_DB=orders_db \
           --from-literal=POSTGRES_USER=orders_user \
           --from-literal=POSTGRES_PASSWORD='{{ db_password }}' \
@@ -61,26 +93,33 @@
 
     - name: Create/update app-secrets secret
       shell: |
-        k3s kubectl -n {{ namespace }} create secret generic app-secrets \
+        k3s kubectl -n {{ k8s_ns }} create secret generic app-secrets \
           --from-literal=SECRET_KEY='{{ secret_key }}' \
           --from-literal=DB_PASSWORD='{{ db_password }}' \
           --dry-run=client -o yaml | k3s kubectl apply -f -
       changed_when: false
       no_log: true
 
-    - name: Helm deploy (values-cloud, vault disabled)
+    - name: Helm deploy (values-cloud, vault disabled, TLS via cert-manager)
       shell: >
         helm upgrade --install orders {{ project_dir }}/helm/orders
-        -n {{ namespace }}
+        -n {{ k8s_ns }}
         -f {{ project_dir }}/helm/orders/values-cloud.yaml
+        --set ingress.host={{ le_host }}
         {{ ('--set app.image.tag=' + image_tag) if (image_tag | length > 0) else '' }}
         --wait --timeout 8m
 
-    - name: Show pods
-      command: k3s kubectl -n {{ namespace }} get pods -o wide
+    - name: Wait for TLS certificate Ready (LE выпускает асинхронно)
+      command: k3s kubectl -n {{ k8s_ns }} wait --for=condition=Ready certificate/app-tls --timeout=240s
+      register: cert_ready
       changed_when: false
-      register: pods_out
+      failed_when: false
 
-    - name: Pods
+    - name: Статус сертификата/challenge
+      command: k3s kubectl -n {{ k8s_ns }} get certificate,order,challenge
+      changed_when: false
+      register: cert_status
+
+    - name: Итог
       debug:
-        var: pods_out.stdout_lines
+        msg: "{{ cert_status.stdout_lines }}"

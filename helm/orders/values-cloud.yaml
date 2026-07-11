@@ -14,3 +14,10 @@ config:
   DB_USER: "orders_user"
 ingress:
   enabled: true
+  # host задаётся из wrapper: --set ingress.host=<ip>.sslip.io
+  tls:
+    enabled: true
+    # staging: надёжно (свой большой лимит), но сертификат не доверенный браузером (curl -k).
+    # prod даёт валидный сертификат, НО лимит LE общий на весь sslip.io (бывает исчерпан).
+    # Переключение на prod: заменить на letsencrypt-prod и helm upgrade.
+    clusterIssuer: letsencrypt-staging

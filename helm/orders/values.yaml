@@ -26,6 +26,10 @@ redis:
   image: redis:7-alpine
 ingress:
   enabled: true
+  host: ""                 # напр. 158.160.1.1.sslip.io (задаём из wrapper по IP)
+  tls:
+    enabled: false
+    clusterIssuer: letsencrypt-prod
 # Vault Agent Injector: секреты в рантайме через sidecar.
 # true  — локальный кластер (Vault + injector установлены);
 # false — секреты из статичного k8s Secret (existingSecrets.app) через envFrom.
