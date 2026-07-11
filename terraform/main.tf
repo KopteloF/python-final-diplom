@@ -24,6 +24,13 @@ resource "yandex_vpc_security_group" "sg" {
     port           = 22
   }
 
+  ingress {
+    protocol       = "TCP"
+    description    = "app http"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 8000
+  }
+
   egress {
     protocol       = "ANY"
     description    = "all outbound"
