@@ -1,0 +1,16 @@
+# Override для облачного k3s (Фаза 1): один узел, без Vault, публичный образ.
+vault:
+  enabled: false
+app:
+  replicas: 1
+  image:
+    pullSecret: ""      # GHCR-пакет публичный → pull-секрет не нужен
+config:
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  DB_HOST: "db"
+  DB_PORT: "5432"
+  DB_NAME: "orders_db"
+  DB_USER: "orders_user"
+ingress:
+  enabled: true

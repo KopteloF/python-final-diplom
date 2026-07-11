@@ -20,16 +20,21 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
+        {{- if .Values.vault.enabled }}
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "orders-app"
         vault.hashicorp.com/agent-init-first: "true"
         vault.hashicorp.com/agent-inject-secret-config: "secret/data/orders/app"
         vault.hashicorp.com/agent-inject-template-config: |
 {{ .Files.Get "files/vault-config.tpl" | indent 10 }}
+        {{- end }}
     spec:
       serviceAccountName: orders-app
+      {{- if .Values.app.image.pullSecret }}
       imagePullSecrets:
         - name: {{ .Values.app.image.pullSecret }}
+      {{- end }}
+      {{- if gt (int .Values.app.replicas) 1 }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -37,10 +42,12 @@ spec:
           labelSelector:
             matchLabels:
               app: app
+      {{- end }}
       initContainers:
         - name: migrate
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          {{- if .Values.vault.enabled }}
           command: ["/bin/sh","-c"]
           args:
             - |
@@ -48,13 +55,21 @@ spec:
               . /vault/secrets/config
               set +a
               exec python manage.py migrate --noinput
+          {{- else }}
+          command: ["python","manage.py","migrate","--noinput"]
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: app-config
+            {{- if not .Values.vault.enabled }}
+            - secretRef:
+                name: {{ .Values.existingSecrets.app }}
+            {{- end }}
       containers:
         - name: app
           image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
           imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          {{- if .Values.vault.enabled }}
           command: ["/bin/sh","-c"]
           args:
             - |
@@ -62,11 +77,18 @@ spec:
               . /vault/secrets/config
               set +a
               exec gunicorn orders.wsgi:application --bind 0.0.0.0:8000 --workers 3
+          {{- else }}
+          command: ["gunicorn","orders.wsgi:application","--bind","0.0.0.0:8000","--workers","3"]
+          {{- end }}
           ports:
             - containerPort: 8000
           envFrom:
             - configMapRef:
                 name: app-config
+            {{- if not .Values.vault.enabled }}
+            - secretRef:
+                name: {{ .Values.existingSecrets.app }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /shops

@@ -26,9 +26,23 @@ resource "yandex_vpc_security_group" "sg" {
 
   ingress {
     protocol       = "TCP"
-    description    = "app http"
+    description    = "app http (NodePort/debug)"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 8000
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "http (ingress/traefik)"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 80
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "https (ingress/traefik)"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 443
   }
 
   egress {
@@ -51,15 +65,15 @@ resource "yandex_compute_instance" "vm" {
 
   resources {
     cores         = 2
-    memory        = 2
-    core_fraction = 20
+    memory        = 4
+    core_fraction = 100
   }
 
   boot_disk {
     initialize_params {
       image_id = data.yandex_compute_image.ubuntu.id
-      size     = 15
-      type     = "network-hdd"
+      size     = 20
+      type     = "network-ssd"
     }
   }
 

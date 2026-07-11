@@ -26,6 +26,11 @@ redis:
   image: redis:7-alpine
 ingress:
   enabled: true
+# Vault Agent Injector: секреты в рантайме через sidecar.
+# true  — локальный кластер (Vault + injector установлены);
+# false — секреты из статичного k8s Secret (existingSecrets.app) через envFrom.
+vault:
+  enabled: true
 # имена секретов, созданных ВНЕ чарта (kubectl create secret ...)
 existingSecrets:
   db: db-credentials

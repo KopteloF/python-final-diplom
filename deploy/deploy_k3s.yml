@@ -1,0 +1,81 @@
+---
+# Фаза 1 облачной доводки: разворачиваем приложение в k3s из готового Helm-чарта.
+# Секреты (db_password, secret_key) приходят через --extra-vars из wrapper-скрипта.
+- name: Deploy orders on k3s (cloud)
+  hosts: web
+  become: true
+  vars:
+    repo_url: https://github.com/KopteloF/orders-devops.git
+    project_dir: /opt/orders
+    namespace: orders
+    image_tag: ""          # если задан — переопределяет тег из values.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Install base packages
+      apt:
+        name: [curl, git, openssl]
+        state: present
+        update_cache: true
+
+    - name: Install k3s (single node)
+      shell: curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for k3s node Ready
+      command: k3s kubectl wait --for=condition=Ready node --all --timeout=180s
+      changed_when: false
+
+    - name: Install Helm
+      shell: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Clone/update project
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ project_dir }}"
+        version: master
+        force: true
+
+    - name: Ensure namespace
+      shell: |
+        k3s kubectl create namespace {{ namespace }} --dry-run=client -o yaml | k3s kubectl apply -f -
+      changed_when: false
+
+    - name: Create/update db-credentials secret
+      shell: |
+        k3s kubectl -n {{ namespace }} create secret generic db-credentials \
+          --from-literal=POSTGRES_DB=orders_db \
+          --from-literal=POSTGRES_USER=orders_user \
+          --from-literal=POSTGRES_PASSWORD='{{ db_password }}' \
+          --dry-run=client -o yaml | k3s kubectl apply -f -
+      changed_when: false
+      no_log: true
+
+    - name: Create/update app-secrets secret
+      shell: |
+        k3s kubectl -n {{ namespace }} create secret generic app-secrets \
+          --from-literal=SECRET_KEY='{{ secret_key }}' \
+          --from-literal=DB_PASSWORD='{{ db_password }}' \
+          --dry-run=client -o yaml | k3s kubectl apply -f -
+      changed_when: false
+      no_log: true
+
+    - name: Helm deploy (values-cloud, vault disabled)
+      shell: >
+        helm upgrade --install orders {{ project_dir }}/helm/orders
+        -n {{ namespace }}
+        -f {{ project_dir }}/helm/orders/values-cloud.yaml
+        {{ ('--set app.image.tag=' + image_tag) if (image_tag | length > 0) else '' }}
+        --wait --timeout 5m
+
+    - name: Show pods
+      command: k3s kubectl -n {{ namespace }} get pods -o wide
+      changed_when: false
+      register: pods_out
+
+    - name: Pods
+      debug:
+        var: pods_out.stdout_lines
