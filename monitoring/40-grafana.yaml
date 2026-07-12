@@ -13,6 +13,18 @@ data:
         url: http://prometheus.monitoring.svc:9090
         isDefault: true
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +32,8 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
@@ -28,6 +42,10 @@ spec:
       labels:
         app: grafana
     spec:
+      # grafana работает под uid 472 — даём ему права на PVC.
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
       containers:
         - name: grafana
           image: grafana/grafana:11.1.4
@@ -48,10 +66,15 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            - name: data
+              mountPath: /var/lib/grafana
       volumes:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
 ---
 apiVersion: v1
 kind: Service

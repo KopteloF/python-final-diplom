@@ -1,0 +1,62 @@
+# Ежедневный снапшот Raft-хранилища Vault в Object Storage.
+# Аутентификация в Vault — по k8s-identity (SA vault-backup, роль vault-backup,
+# политика даёт только read sys/storage/raft/snapshot). Токен не хранится нигде.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-backup
+  namespace: orders
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-snapshot
+  namespace: orders
+spec:
+  schedule: "30 3 * * *"           # каждый день в 03:30
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: vault-backup
+          restartPolicy: Never
+          initContainers:
+            - name: snapshot
+              image: hashicorp/vault:1.17
+              env:
+                - name: VAULT_ADDR
+                  value: "http://vault.vault.svc:8200"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  JWT="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+                  export VAULT_TOKEN="$(vault write -field=token auth/kubernetes/login role=vault-backup jwt="$JWT")"
+                  vault operator raft snapshot save /backup/vault.snap
+                  ls -lh /backup
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.15.30
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  KEY="vault/vault-$(date +%Y%m%d-%H%M%S).snap"
+                  aws --endpoint-url "$S3_ENDPOINT" s3 cp /backup/vault.snap "s3://$S3_BUCKET/$KEY"
+                  echo "OK: s3://$S3_BUCKET/$KEY"
+              envFrom:
+                - secretRef:
+                    name: backup-s3
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              emptyDir: {}

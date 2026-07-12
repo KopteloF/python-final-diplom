@@ -1,0 +1,65 @@
+# Ежедневный дамп БД в Object Storage.
+# Пароль БД берём из Vault (SA orders-db), НЕ из статичного секрета.
+# agent-pre-populate-only=true — Vault-агент рендерит секрет один раз в init и
+# НЕ оставляет sidecar (иначе Job никогда бы не завершился).
+# Доступ к S3 — из k8s-секрета backup-s3 (создаётся вне git).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: orders
+spec:
+  schedule: "0 3 * * *"            # каждый день в 03:00
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          annotations:
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/role: "orders-db"
+            vault.hashicorp.com/agent-pre-populate-only: "true"
+            vault.hashicorp.com/agent-inject-secret-db-password: "secret/data/orders/db"
+            vault.hashicorp.com/agent-inject-perms-db-password: "0644"
+            vault.hashicorp.com/agent-inject-template-db-password: |
+              {{- with secret "secret/data/orders/db" -}}
+              {{ .Data.data.POSTGRES_PASSWORD }}
+              {{- end -}}
+        spec:
+          serviceAccountName: orders-db
+          restartPolicy: Never
+          initContainers:
+            - name: dump
+              image: postgres:16
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  export PGPASSWORD="$(cat /vault/secrets/db-password)"
+                  pg_dump -h db -U orders_user orders_db | gzip > /backup/dump.sql.gz
+                  ls -lh /backup
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.15.30
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  KEY="db/orders-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  aws --endpoint-url "$S3_ENDPOINT" s3 cp /backup/dump.sql.gz "s3://$S3_BUCKET/$KEY"
+                  echo "OK: s3://$S3_BUCKET/$KEY"
+              envFrom:
+                - secretRef:
+                    name: backup-s3
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              emptyDir: {}
