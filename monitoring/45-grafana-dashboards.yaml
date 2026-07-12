@@ -1,0 +1,21 @@
+# Провайдер дашбордов: Grafana подхватывает все JSON из /var/lib/grafana/dashboards.
+# Сами JSON приезжают из ConfigMap grafana-dashboards, который собирается из файлов
+# monitoring/dashboards/*.json (dashboards as code — переживают сброс тома Grafana).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'orders'
+        orgId: 1
+        type: file
+        disableDeletion: false
+        allowUiUpdates: true
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false

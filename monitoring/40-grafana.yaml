@@ -9,6 +9,7 @@ data:
     datasources:
       - name: Prometheus
         type: prometheus
+        uid: prometheus          # фиксируем uid → дашборды-как-код ссылаются на него детерминированно
         access: proxy
         url: http://prometheus.monitoring.svc:9090
         isDefault: true
@@ -66,12 +67,23 @@ spec:
           volumeMounts:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
             - name: data
               mountPath: /var/lib/grafana
       volumes:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        # JSON дашбордов создаётся из файлов monitoring/dashboards/ (см. README мониторинга).
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
         - name: data
           persistentVolumeClaim:
             claimName: grafana-data
