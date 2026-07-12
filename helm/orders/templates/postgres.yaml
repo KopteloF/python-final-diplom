@@ -1,3 +1,10 @@
+{{- if .Values.vault.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orders-db
+---
+{{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -23,15 +30,41 @@ spec:
     metadata:
       labels:
         app: db
+      {{- if .Values.vault.enabled }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "orders-db"
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject-secret-db-password: "secret/data/orders/db"
+        # 0644: файл читает процесс postgres (uid 999), а рендерит его агент (uid 100)
+        vault.hashicorp.com/agent-inject-perms-db-password: "0644"
+        vault.hashicorp.com/agent-inject-template-db-password: |
+{{ .Files.Get "files/vault-db-password.tpl" | indent 10 }}
+      {{- end }}
     spec:
+      {{- if .Values.vault.enabled }}
+      serviceAccountName: orders-db
+      {{- end }}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
           ports:
             - containerPort: 5432
+          {{- if .Values.vault.enabled }}
+          # Пароль БД — из файла, отрендеренного Vault Agent (не из статичного Secret).
+          # POSTGRES_*_FILE — штатная фича образа postgres, кастомный entrypoint не нужен.
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.config.DB_NAME | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.config.DB_USER | quote }}
+            - name: POSTGRES_PASSWORD_FILE
+              value: /vault/secrets/db-password
+          {{- else }}
           envFrom:
             - secretRef:
                 name: {{ .Values.existingSecrets.db }}
+          {{- end }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
